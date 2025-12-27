@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zootopia 2: Narrative Arc Visualization + AI</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+
+        :root {
+            --nick-orange: #FF8C00;
+            --judy-purple: #6A5ACD;
+            --bg-dark: #1a1a2e;
+            --text-light: #f0f0f0;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --sidebar-width: 350px;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #1e3f66 0%, #2c3e50 100%);
+            font-family: 'Nunito', sans-serif;
+            color: var(--text-light);
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .logo {
+            font-size: 2rem;
+            font-weight: 900;
+            background: linear-gradient(to right, var(--nick-orange), var(--judy-purple));
+            -webkit-background-clip: text;
+            color: transparent;
+            text-transform: uppercase;
+        }
+
+        .instruction {
+            font-size: 0.9rem;
+            opacity: 0.7;
+            background: rgba(0,0,0,0.3);
+            padding: 5px 15px;
+            border-radius: 20px;
+        }
+
+        #canvas-container {
+            flex-grow: 1;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+            transition: margin-right 0.3s ease;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* Tooltip Card Styling */
+        #tooltip {
+            position: absolute;
+            display: none;
+            width: 320px;
+            background: var(--card-bg);
+            color: #333;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            pointer-events: none;
+            transform: translate(-50%, -120%);
+            z-index: 100;
+            border-left: 5px solid var(--nick-orange);
+            transition: opacity 0.2s ease;
+        }
+
+        #tooltip h3 {
+            margin: 0 0 5px 0;
+            color: var(--judy-purple);
+            font-size: 1.2rem;
+        }
+
+        #tooltip .tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            background: #eee;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            font-weight: bold;
+            color: #666;
+        }
+
+        #tooltip p {
+            margin: 0;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .act-label {
+            position: absolute;
+            bottom: 30px;
+            font-size: 1.5rem;
+            font-weight: 900;
+            opacity: 0.1;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        /* Sidebar Styling */
+        #sidebar {
+            position: fixed;
+            top: 0;
+            right: -400px; /* Hidden by default */
+            width: var(--sidebar-width);
+            height: 100%;
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: -5px 0 30px rgba(0,0,0,0.2);
+            z-index: 200;
+            transition: right 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            color: #333;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #sidebar.active {
+            right: 0;
+        }
+
+        .sidebar-header {
+            padding: 30px;
+            background: linear-gradient(135deg, var(--nick-orange), var(--judy-purple));
+            color: white;
+            position: relative;
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        .sidebar-content {
+            padding: 30px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .ai-btn {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 12px;
+            border: none;
+            border-radius: 10px;
+            font-weight: bold;
+            font-family: 'Nunito', sans-serif;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .ai-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .btn-script { background: #e3f2fd; color: #1565c0; }
+        .btn-thoughts { background: #f3e5f5; color: #7b1fa2; }
+        .btn-whatif { background: #fff3e0; color: #e65100; }
+
+        .gemini-result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            border-left: 4px solid var(--judy-purple);
+            min-height: 50px;
+            white-space: pre-wrap;
+        }
+
+        .loading {
+            text-align: center;
+            color: #888;
+            font-style: italic;
+        }
+        
+        /* Sparkle animation for AI buttons */
+        @keyframes sparkle {
+            0% { opacity: 0; transform: scale(0); }
+            50% { opacity: 1; transform: scale(1.2); }
+            100% { opacity: 0; transform: scale(0); }
+        }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">Zootopia 2 Story Arc</div>
+        <div class="instruction">点击节点打开 AI 编剧助手 • 纵轴代表戏剧张力</div>
+    </header>
+
+    <div id="canvas-container">
+        <canvas id="storyCanvas"></canvas>
+        <div id="tooltip">
+            <h3 id="tt-title">Title</h3>
+            <span id="tt-tag" class="tag">Act 1</span>
+            <p id="tt-desc">Description goes here.</p>
+        </div>
+        
+        <!-- Background Act Labels -->
+        <div class="act-label" style="left: 15%">ACT I: SETUP</div>
+        <div class="act-label" style="left: 50%; transform: translateX(-50%)">ACT II: CONFRONTATION</div>
+        <div class="act-label" style="right: 15%">ACT III: RESOLUTION</div>
+    </div>
+
+    <!-- Sidebar for AI Features -->
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <button class="close-btn" onclick="closeSidebar()">×</button>
+            <h2 id="sb-title" style="margin:0; font-size:1.5rem;">Scene Title</h2>
+            <div id="sb-tag" style="opacity:0.8; font-size:0.9rem; margin-top:5px;">Act Info</div>
+        </div>
+        <div class="sidebar-content">
+            <p id="sb-desc" style="color:#666; margin-bottom:30px; line-height:1.6;">Scene description...</p>
+            
+            <h4 style="color:var(--judy-purple); margin-bottom:15px;">✨ Gemini AI 创意引擎</h4>
+            
+            <button class="ai-btn btn-script" onclick="askGemini('script')">
+                <span>📝 生成剧本对白</span>
+            </button>
+            
+            <button class="ai-btn btn-thoughts" onclick="askGemini('thoughts')">
+                <span>🧠 角色内心独白</span>
+            </button>
+            
+            <button class="ai-btn btn-whatif" onclick="askGemini('whatif')">
+                <span>🔀 平行宇宙：假如...</span>
+            </button>
+
+            <div id="ai-output" class="gemini-result" style="display:none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('storyCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+        const tooltip = document.getElementById('tooltip');
+        const ttTitle = document.getElementById('tt-title');
+        const ttTag = document.getElementById('tt-tag');
+        const ttDesc = document.getElementById('tt-desc');
+        
+        // Sidebar elements
+        const sidebar = document.getElementById('sidebar');
+        const sbTitle = document.getElementById('sb-title');
+        const sbTag = document.getElementById('sb-tag');
+        const sbDesc = document.getElementById('sb-desc');
+        const aiOutput = document.getElementById('ai-output');
+
+        let currentSceneData = null;
+
+        // Story Data Points
+        const storyPoints = [
+            {
+                title: "冒充综合症",
+                tag: "第一幕 • 开篇",
+                desc: "尼克和朱迪在码头卧底失败，毁坏了市长雕像。虽然是搭档，但内心充满对自身能力的不自信。",
+                yFactor: 0.3,
+                color: "#FFD700"
+            },
+            {
+                title: "激励事件：被边缘化",
+                tag: "第一幕 • 冲突",
+                desc: "被牛局长调离一线并强制参加心理辅导。朱迪发现爬行动物失踪案与庆典有关的线索。",
+                yFactor: 0.45,
+                color: "#FF6347"
+            },
+            {
+                title: "庆典大乱 (The Gala)",
+                tag: "第一幕 • 转折点",
+                desc: "蛇Gary抢走日志，现场混乱，局长中毒。两人被陷害，被迫开始逃亡。",
+                yFactor: 0.7,
+                color: "#6A5ACD"
+            },
+            {
+                title: "沼泽市场探险",
+                tag: "第二幕 • 游戏时间",
+                desc: "与播客海狸Nibbles结伴，探索爬行动物专属的地下市场。新奇有趣，张力稍缓。",
+                yFactor: 0.5,
+                color: "#88C057"
+            },
+            {
+                title: "中点：历史的真相",
+                tag: "第二幕 • 发现",
+                desc: "得知林克斯利家族抹除了爬行动物的历史。Gary其实是想找回祖先的发明专利。",
+                yFactor: 0.65,
+                color: "#20B2AA"
+            },
+            {
+                title: "灵魂黑夜：分道扬镳",
+                tag: "第二幕 • 最低点",
+                desc: "悬崖旅馆争吵。尼克不想送命，朱迪坚持正义。警局突袭，两人失散，关系破裂。",
+                yFactor: 0.2, 
+                color: "#333333"
+            },
+            {
+                title: "反转：真面目",
+                tag: "第三幕 • 危机",
+                desc: "看似无害的Pawbert露出獠牙，试图冻死所有人。尼克越狱归来救下朱迪。",
+                yFactor: 0.85,
+                color: "#DC143C"
+            },
+            {
+                title: "高潮：冰墙决战",
+                tag: "第三幕 • 决战",
+                desc: "尼克做出关键选择：放弃证据去救朱迪。两人合力击败Pawbert。信任重铸。",
+                yFactor: 0.95,
+                color: "#FF4500"
+            },
+            {
+                title: "结局：新的篇章",
+                tag: "第三幕 • 解决",
+                desc: "爬行动物街区重建。尼克修好录音笔。他们不再需要向世界证明什么，因为他们拥有彼此。",
+                yFactor: 0.4,
+                color: "#4682B4"
+            }
+        ];
+
+        let width, height;
+        let particles = [];
+        let computedPoints = [];
+
+        function resize() {
+            width = container.clientWidth;
+            height = container.clientHeight;
+            canvas.width = width;
+            canvas.height = height;
+            initParticles();
+            draw();
+        }
+
+        function initParticles() {
+            particles = [];
+            for(let i=0; i<50; i++) {
+                particles.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    r: Math.random() * 3,
+                    speed: Math.random() * 0.5
+                });
+            }
+        }
+
+        function drawParticles() {
+            ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+            particles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                ctx.fill();
+                p.y -= p.speed;
+                if(p.y < 0) p.y = height;
+            });
+        }
+
+        function draw(hoverIndex = -1) {
+            ctx.clearRect(0, 0, width, height);
+            drawParticles();
+
+            // Draw Curve
+            ctx.beginPath();
+            ctx.moveTo(0, height * 0.7);
+
+            const step = width / (storyPoints.length + 1);
+            
+            const pointsCoords = storyPoints.map((pt, i) => {
+                const y = height - (height * 0.2 + pt.yFactor * (height * 0.6)); 
+                const x = step * (i + 1);
+                return { x, y, ...pt };
+            });
+
+            // Smooth Curve
+            pointsCoords.forEach((p, i) => {
+                if(i===0) {
+                     ctx.bezierCurveTo(p.x/2, height*0.7, p.x/2, p.y, p.x, p.y);
+                } else {
+                    const prev = pointsCoords[i-1];
+                    const cp1x = prev.x + (p.x - prev.x) * 0.5;
+                    const cp1y = prev.y;
+                    const cp2x = prev.x + (p.x - prev.x) * 0.5;
+                    const cp2y = p.y;
+                    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p.x, p.y);
+                }
+            });
+
+            const gradient = ctx.createLinearGradient(0, 0, width, 0);
+            gradient.addColorStop(0, "#FF8C00");
+            gradient.addColorStop(0.5, "#6A5ACD");
+            gradient.addColorStop(1, "#A5F2F3");
+
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = gradient;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#FF8C00';
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Draw Points
+            pointsCoords.forEach((p, i) => {
+                const isHovered = i === hoverIndex;
+                const size = isHovered ? 20 : 12;
+
+                if (isHovered) {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, size + 10, 0, Math.PI * 2);
+                    ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+                    ctx.fill();
+                }
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+                
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = "#fff";
+                ctx.stroke();
+
+                if (!isHovered) {
+                   ctx.fillStyle = "rgba(255,255,255,0.7)";
+                   ctx.font = "12px Nunito";
+                   ctx.textAlign = "center";
+                   ctx.fillText(i + 1, p.x, p.y + 30);
+                }
+            });
+
+            return pointsCoords;
+        }
+
+        // --- Interaction Logic ---
+
+        let mouseX = 0;
+        let mouseY = 0;
+        let hoverIndex = -1;
+
+        function loop() {
+            // Check hover
+            let newHoverIndex = -1;
+            
+            computedPoints.forEach((p, i) => {
+                const dx = mouseX - p.x;
+                const dy = mouseY - p.y;
+                if (Math.sqrt(dx*dx + dy*dy) < 30) {
+                    newHoverIndex = i;
+                }
+            });
+
+            hoverIndex = newHoverIndex;
+            draw(hoverIndex);
+            
+            // Only show tooltip if sidebar is NOT active
+            if (hoverIndex !== -1 && !sidebar.classList.contains('active')) {
+                const p = computedPoints[hoverIndex];
+                tooltip.style.display = 'block';
+                tooltip.style.left = p.x + 'px';
+                tooltip.style.top = p.y + 'px';
+                
+                if (ttTitle.innerText !== p.title) {
+                    ttTitle.innerText = p.title;
+                    ttTag.innerText = p.tag;
+                    ttDesc.innerText = p.desc;
+                    ttTag.style.borderLeft = `3px solid ${p.color}`;
+                    ttDesc.innerHTML = p.desc + "<br><br><small style='color:var(--nick-orange)'>👉 点击查看 AI 解析</small>";
+                }
+            } else {
+                tooltip.style.display = 'none';
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        // --- Event Listeners ---
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (hoverIndex !== -1) {
+                openSidebar(computedPoints[hoverIndex]);
+            } else {
+                // closeSidebar(); // Optional: close if clicking empty space
+            }
+        });
+
+        window.addEventListener('resize', resize);
+        
+        // --- Sidebar & AI Functions ---
+
+        function openSidebar(sceneData) {
+            currentSceneData = sceneData;
+            sidebar.classList.add('active');
+            sbTitle.innerText = sceneData.title;
+            sbTag.innerText = sceneData.tag;
+            sbDesc.innerText = sceneData.desc;
+            aiOutput.style.display = 'none'; // Reset output
+            aiOutput.innerText = '';
+        }
+
+        function closeSidebar() {
+            sidebar.classList.remove('active');
+        }
+
+        async function askGemini(type) {
+            if (!currentSceneData) return;
+
+            const apiKey = ""; // System will inject key
+            aiOutput.style.display = 'block';
+            aiOutput.innerHTML = '<div class="loading">✨ Gemini 正在思考中...</div>';
+
+            let prompt = "";
+            const sceneInfo = `场景标题：${currentSceneData.title}。场景描述：${currentSceneData.desc}。上下文：这是电影《疯狂动物城2》的剧本。角色包含尼克(Nick Wilde)和朱迪(Judy Hopps)。`;
+
+            if (type === 'script') {
+                prompt = `${sceneInfo} 请为这个场景写一段简短的电影剧本对话（Screenplay format），包含动作描写和角色对白。体现出当时的情感张力。`;
+            } else if (type === 'thoughts') {
+                prompt = `${sceneInfo} 请分析此时尼克和朱迪的内心独白（Inner Monologue）。他们表面在做什么？实际上内心在担心什么？请分别列出。`;
+            } else if (type === 'whatif') {
+                prompt = `${sceneInfo} 这是一个关键剧情点。请设想一个“平行宇宙”的情况：如果他们在这个场景做出了完全相反的选择，剧情会如何发展？请构思一个简短的替代剧情。`;
+            }
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [{ text: prompt }]
+                        }]
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API Request failed: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "无法生成内容，请重试。";
+                
+                // Simple formatting
+                aiOutput.innerHTML = text.replace(/\n/g, '<br>');
+
+            } catch (error) {
+                console.error(error);
+                aiOutput.innerText = "抱歉，AI 服务暂时不可用，请检查网络连接或稍后再试。";
+            }
+        }
+
+        // Start
+        resize();
+        // Force first calculation for loop
+        computedPoints = draw(-1);
+        requestAnimationFrame(loop);
+
+    </script>
+</body>
+</html>
